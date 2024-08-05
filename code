@@ -15,7 +15,7 @@
 (function() {
 'use strict';
 /*
-Planned Features:
+Planned:
 - Add `autoGuessLastAnswer` toggle
 
 Bugs:
@@ -140,7 +140,7 @@ observeDrawingTurn();
 
 
 // Core functionality
-/* 1) When a new round starts generate possibleWords using correctAnswers.
+/* 1) When a new round starts generate `possibleWords` using `correctAnswers`.
  *
  * 2) Filter `possibleWords` (hint observer)
  *        a. When a new hint appears
@@ -148,9 +148,9 @@ observeDrawingTurn();
  * 2) Filter `possibleWords` (chat observer)
  *        a. When the word is guessed in chat
  *        b. When closeWord message appears
- *        c. When user guesses word and it is not close (comming soon)
+ *        c. When user guesses word and it is not close
  *
- * 3) When the round is over push `correctAnswer` to `correctAnswers` + increase priority
+ * 3) When the round is over push `correctAnswer` to `correctAnswers` + increase priority (comming soon)
  */
 let possibleWords = [];
 
@@ -208,7 +208,6 @@ function generateGuesses() {
     if (autoGuessLastAnswer && possibleWords.length === 1) {
         inputElem.value = possibleWords.shift();
         document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-        possibleWords = [];
     }
 
     renderGuesses(filteredWords);
@@ -221,6 +220,7 @@ function filterHints(inputWords) {
     return inputWords.filter(word => hintRegex.test(word));
 }
 
+// When the all hints are uncovored push `correctAnswer` to `correctAnswers` + increase priority (comming soon)
 function observeHints() {
     const hintTargets = [
         document.querySelector('.hints .container'),
@@ -237,7 +237,7 @@ function observeHints() {
 
 observeHints();
 
-// by default do what is not close, otherwise rollback
+
 function levenshteinDistance(a, b) {
     const matrix = [];
     for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -260,6 +260,7 @@ function levenshteinDistance(a, b) {
 }
 
 let previous = [];
+
 function handleChatMessage(messageNode) {
     const message = messageNode.textContent;
     const computedStyle = window.getComputedStyle(messageNode);
@@ -269,7 +270,7 @@ function handleChatMessage(messageNode) {
         generateGuesses();
     }
 
-    //Guess message
+    // Guess message
     if (message.includes(': ')) {
         const [username, guess] = message.split(': ');
         possibleWords = possibleWords.filter(word => word !== guess);
@@ -279,7 +280,7 @@ function handleChatMessage(messageNode) {
         generateGuesses();
     }
 
-    //Hint message
+    // Hint message
     if (computedStyle.color === 'rgb(226, 203, 0)' && message.includes('is close!')) {
         let closeWord = message.split(' ')[0];
         possibleWords = previous.filter(word => levenshteinDistance(word, closeWord) === 1);
@@ -309,7 +310,6 @@ function observeInput() {
     inputElem.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
             const filteredWords = possibleWords.filter(word => new RegExp(`^${inputElem.value.trim()}`, 'i').test(word));
-            console.log(inputElem.value.trim());
             if (inputElem.value.trim() === "") {
                 inputElem.value = possibleWords[0];
                 document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
