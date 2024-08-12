@@ -1,0 +1,379 @@
+(function() {
+'use strict';
+/*
+ToDo:
+- Fix input observer
+- Add export and autoGuess parent element + make parent stick to `guessElem` (UI)
+
+Planned:
+- Auto-leave / Auto-change lobbies before kick <— How does Typo switch lobbies?
+
+Bugs:
+- Filter breaks when another user shares your name
+- Empty line appends to `newWords` list when exporting
+- Enter can accidentally toggle `autoGuessButton`
+
+Ideas:
+- Humanized auto-draw (inspired by Typo) with community support on GitHub. AutoSave other peoples drawings.
+- Auto-sort possibleWords (neural net) (is googles model open source?)
+- Randomize auto-guess time
+- Add `autoGuessLastAnswer` toggle
+*/
+
+// Variables (Default Values)
+// const autoGuessLastAnswer = true;
+let autoGuessing = false;
+
+
+// UI Elements
+const parentElement = document.createElement('div');
+Object.assign(parentElement.style, { position: 'fixed', bottom: 0, right: 0, width: '100%', height: 'auto' });
+document.body.appendChild(parentElement);
+
+const guessElem = document.createElement('div');
+Object.assign(guessElem.style, { padding: '10px', backgroundColor: 'white', maxHeight: '200px', overflowX: 'auto', whiteSpace: 'nowrap', width: '100%' });
+parentElement.appendChild(guessElem);
+
+// settingsElem = document.createElement('div');
+// Object.assign(settingsElem.style, { });
+// parentElement.appendChild(settingsElem);
+
+const autoGuessButton = document.createElement('button');
+autoGuessButton.innerHTML = `Auto Guess: ${autoGuessing ? 'ON' : 'OFF'}`;
+Object.assign(autoGuessButton.style, { position: 'absolute', bottom: 'calc(100% + 10px)', right: '115px', padding: '5px 10px', fontSize: '12px', backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '5px' });
+parentElement.appendChild(autoGuessButton);
+
+const exportButton = document.createElement('button');
+exportButton.innerHTML = 'Export Answers';
+Object.assign(exportButton.style, { position: 'absolute', bottom: 'calc(100% + 10px)', right: 0, padding: '5px 10px', fontSize: '12px', backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '5px' });
+parentElement.appendChild(exportButton);
+
+
+// Functions
+const correctAnswers = GM_getValue('correctAnswers', []);
+
+function fetchWords(url) {
+    return fetch(url)
+        .then(response => response.ok ? response.text() : Promise.reject(`HTTP error! status: ${response.status}`))
+        .then(data => data.split('\n').map(word => word.trim())) // is trim necessary
+        .catch(error => {
+            console.error(`Fetch error: ${error.message}`);
+            return [];
+        }); // is error catch necessary
+}
+
+function fetchAndStoreLatestWordlist() {
+    fetchWords('https://raw.githubusercontent.com/zkisaboss/reorderedwordlist/main/wordlist.txt')
+        .then(words => words.forEach(word => {
+            if (!correctAnswers.includes(word)) correctAnswers.push(word);
+        })); // can you make this more readable
+}
+
+fetchAndStoreLatestWordlist();
+
+// re-impliment
+let myUsername = '';
+
+function setUsername() {
+    const playerElems = document.querySelectorAll(".player");
+    playerElems.forEach(playerElem => {
+        const playerNameElem = playerElem.querySelector(".player-name");
+        if (playerNameElem) {
+		        let playerName = playerNameElem.textContent.trim(); // is trim necessary
+		        if (playerName.endsWith(" (You)")) {
+		            myUsername = playerName.replace(" (You)", "");
+		        }
+        }
+    });
+}
+
+function observePlayers() {
+    const playersContainer = document.querySelector(".players-list");
+    if (playersContainer) {
+        const observer = new MutationObserver(() => {
+            if (myUsername === '') {
+                setUsername();
+            } else {
+                observer.disconnect();
+            }
+        });
+        observer.observe(playersContainer, { childList: true, subtree: true });
+    }
+}
+
+observePlayers();
+
+
+function observeDrawingTurn() {
+    const wordsElement = document.querySelector('.words');
+
+    const processNewChildNodes = (childNodes) => {
+        childNodes.forEach(childNode => {
+            const textContent = childNode.textContent.toLowerCase().trim();
+            if (textContent && !correctAnswers.includes(textContent)) {
+                correctAnswers.push(textContent);
+                GM_setValue('correctAnswers', correctAnswers);
+            }
+        });
+    };
+
+    const mutationCallback = (mutationsList) => {
+        const mutation = mutationsList.find(mutation => mutation.type === 'childList');
+        if (mutation) {
+            processNewChildNodes(mutation.target.childNodes);
+        }
+    };
+
+    const observer = new MutationObserver(mutationCallback);
+
+    observer.observe(wordsElement, { subtree: true, childList: true });
+}
+
+observeDrawingTurn();
+
+
+// Core functionality
+/* 1) When a new round starts generate `possibleWords` using `correctAnswers`.
+ *
+ * 2) Filter `possibleWords` (hint observer)
+ *        a. When a new hint appears
+ *
+ * 2) Filter `possibleWords` (chat observer)
+ *        a. When the word is guessed in chat
+ *        b. When closeWord message appears
+ *        c. When user guesses word and it is not close
+ *
+ * 3) When the round is over push `correctAnswer` to `correctAnswers` + increase priority (comming soon)
+ */
+let possibleWords = [];
+
+function renderGuesses(possibleWords) {
+    guessElem.innerHTML = '';
+
+    possibleWords.forEach((word, index) => {
+        const wordElem = document.createElement('div');
+        wordElem.innerHTML = word;
+        Object.assign(wordElem.style, {
+            fontWeight: 'bold',
+            display: 'inline-block',
+            padding: '5px',
+            marginRight: '2px',
+            color: 'white',
+            textShadow: '2px 2px 2px black',
+            backgroundColor: 'hsl(21%, 100%, 50%)'
+        });
+
+        wordElem.addEventListener('mouseenter', () => {
+            if (!wordElem.classList.contains('pressed')) wordElem.style.backgroundColor = 'lightgray';
+            wordElem.classList.add('hovered');
+        });
+
+        wordElem.addEventListener('mouseleave', () => {
+            if (!wordElem.classList.contains('pressed')) wordElem.style.backgroundColor = `hsl(${hueValue}, 100%, 50%)`;
+            wordElem.classList.remove('hovered');
+        });
+
+        wordElem.addEventListener('mousedown', () => {
+            wordElem.classList.add('pressed');
+            wordElem.style.backgroundColor = 'gray';
+        });
+
+        wordElem.addEventListener('mouseup', () => {
+            wordElem.classList.remove('pressed');
+            wordElem.style.backgroundColor = wordElem.classList.contains('hovered') ? 'lightgray' : `hsl(${hueValue}, 100%, 50%)`;
+        });
+
+        wordElem.addEventListener('click', () => {
+            document.querySelector('#game-chat input[data-translate="placeholder"]').value = word;
+            document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        });
+
+        guessElem.appendChild(wordElem);
+    });
+}
+
+function generateGuesses() {
+    const inputElem = document.querySelector('#game-chat input[data-translate="placeholder"]');
+    const inputRegex = new RegExp(`^${inputElem.value.trim()}`, 'i'); // is trim necessary
+    let filteredWords = possibleWords.filter(word => inputRegex.test(word));
+    // add delay or another implimentation to avoid spam-detection
+    if (possibleWords.length === 1) {
+        inputElem.value = possibleWords.shift();
+        document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    }
+
+    renderGuesses(filteredWords);
+}
+
+function filterHints(inputWords) {
+    const hintElems = Array.from(document.querySelectorAll('.hints .hint'));
+    const hintPattern = hintElems.map(elem => elem.textContent === '_' ? '[a-z]' : elem.textContent).join('');
+    const hintRegex = new RegExp(`^${hintPattern}$`, 'i');
+    return inputWords.filter(word => hintRegex.test(word));
+}
+
+// When the all hints are uncovored push `correctAnswer` to `correctAnswers` + increase priority (comming soon)
+function observeHints() {
+    const hintTargets = [
+        document.querySelector('.hints .container'),
+        document.querySelector('.words'),
+        document.querySelector('#game-word')
+    ].filter(Boolean); // why three hint targets?
+
+    const observer = new MutationObserver(() => {
+        possibleWords = filterHints(possibleWords);
+        generateGuesses();
+    });
+    hintTargets.forEach(target => observer.observe(target, { childList: true, subtree: true })); // do these observers ever disconnect?
+}
+
+observeHints();
+
+// add source explaining levenstein distance
+function levenshteinDistance(a, b) {
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+    return matrix[b.length][a.length];
+}
+
+let previous = [];
+
+function handleChatMessage(messageNode) {
+    const messageColor = window.getComputedStyle(messageNode).color;
+    if (messageColor === 'rgb(57, 117, 206)') {
+        possibleWords = filterHints(correctAnswers);
+        generateGuesses();
+    }
+
+    const message = messageNode.textContent;
+    if (message.includes(': ')) {
+        const [username, guess] = message.split(': ');
+        possibleWords = possibleWords.filter(word => word !== guess); // best solution
+
+        previous = possibleWords
+        if (username === myUsername) {
+            possibleWords = possibleWords.filter(word => levenshteinDistance(word, guess) > 1);
+        }
+
+        generateGuesses();
+    }
+    // if message (ends with) is close
+    if (message.endsWith('is close!')) console.log('.endsWith() works');
+
+    if (messageColor === 'rgb(226, 203, 0)' && message.includes('is close!')) {
+        console.log(message);
+   
+        let closeWord = message.split(' ')[0]; // works for multi-word guesses?
+        possibleWords = previous.filter(word => levenshteinDistance(word, closeWord) === 1);
+
+        generateGuesses();
+    }
+}
+
+function observeChat() {
+    const chatContainer = document.querySelector('.chat-content');
+    const observer = new MutationObserver(mutationsList => {
+        mutationsList.forEach(mutation => {
+            if (mutation.addedNodes.length > 0) {
+                handleChatMessage(mutation.addedNodes[0]);
+            }
+        });
+    });
+    observer.observe(chatContainer, { childList: true });
+}
+
+observeChat();
+
+
+function observeInput() {
+    const inputElem = document.querySelector('#game-chat input[data-translate="placeholder"]');
+    inputElem.addEventListener('input', generateGuesses);
+
+    inputElem.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            // fix regex so that if the input is "" it matches to anything (so possibleWords wont be filtered (remove carrot?))
+            const filteredWords = possibleWords.filter(word => new RegExp(`^${inputElem.value.trim()}`, 'i').test(word)); // .test()?
+            /*
+            if (inputElem.value.trim() === "") {
+                inputElem.value = possibleWords[0];
+                document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            } 
+            */
+            if (filteredWords.length > 0) {
+                inputElem.value = filteredWords[0];
+                document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            }
+        }
+    });
+}
+
+observeInput();
+
+
+let autoGuessInterval;
+
+function startAutoGuessing() {
+    if (autoGuessing) {
+        autoGuessInterval = setInterval(() => {
+            if (possibleWords.length > 0) {
+                document.querySelector('#game-chat input[data-translate="placeholder"]').value = possibleWords.shift();
+                document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            }
+        }, 10000);
+    }
+}
+
+startAutoGuessing();
+
+
+function toggleAutoGuessing() {
+    autoGuessing = !autoGuessing;
+    autoGuessButton.innerHTML = `Auto Guess: ${autoGuessing ? 'ON' : 'OFF'}`;
+
+    if (autoGuessing) {
+        startAutoGuessing();
+    } else {
+        clearInterval(autoGuessInterval);
+        autoGuessInterval = null;
+    }
+}
+
+autoGuessButton.addEventListener('click', toggleAutoGuessing);
+
+
+function exportNewWords() {
+    fetchWords('https://raw.githubusercontent.com/zkisaboss/reorderedwordlist/main/wordlist.txt')
+        .then(latestWords => {
+            const newWords = correctAnswers.filter(word => !latestWords.includes(word)); // rename for readability
+            
+            const blob = new Blob([newWords.join('\n')], { type: 'text/plain;charset=utf-8' }); // possible empty line bug
+
+            const anchor = document.createElement('a');
+            anchor.href = URL.createObjectURL(blob); // what does this do
+            anchor.download = 'newWords.txt';
+            anchor.style.display = 'none'; // is this necessary
+
+            document.body.appendChild(anchor);
+            anchor.click();
+
+            document.body.removeChild(anchor);
+        });
+}
+
+exportButton.addEventListener('click', exportNewWords);
+})();
