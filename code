@@ -85,11 +85,11 @@ function setUsername() {
     const playerElems = document.querySelectorAll(".player");
     playerElems.forEach(playerElem => {
         const playerNameElem = playerElem.querySelector(".player-name");
-        if (!playerNameElem) return;
-
-        let playerName = playerNameElem.textContent.trim();
-        if (playerName.endsWith(" (You)")) {
-            myUsername = playerName.replace(" (You)", "");
+        if (playerNameElem) {
+		        let playerName = playerNameElem.textContent.trim();
+		        if (playerName.endsWith(" (You)")) {
+		            myUsername = playerName.replace(" (You)", "");
+		        }
         }
     });
 }
