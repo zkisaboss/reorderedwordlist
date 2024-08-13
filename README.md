@@ -13,14 +13,14 @@
   <a href="https://github.com/zkisaboss/reorderedwordlist/blob/main/LICENSE" rel="nofollow"><img src="https://img.shields.io/github/license/zkisaboss/reorderedwordlist" alt="License"></a>
 </p>
 
-**Skribbl Autoguesser** is a userscript designed to enhance your experience on [Skribbl.io](https://www.skribbl.io/) by automatically suggesting words during gameplay. It builds on the original WordSleuth script, offering advanced features to improve your guessing accuracy and gameplay experience.
+**Skribbl Autoguesser** is a userscript designed to enhance your experience on [Skribbl.io](https://www.skribbl.io/) by automatically suggesting words during gameplay. It builds on the original WordSleuth script, offering new advanced features to improve your guessing accuracy and gameplay experience.
 
 ## Features
 
-- **Auto Guessing**: Automatically submits guesses based on the context of the game.
-- **Dynamic Word List**: Continuously updated with new words from the latest wordlist.
-- **Customizable UI**: Easily toggle auto guessing and export new words.
-- **Real-time Feedback**: Adjusts suggestions based on chat messages and hints.
+- **Auto Guessing**: Automatically generate and submit guesses based on the context of the game.
+- **Dynamic Word List**: Continuously updated with new words.
+- **Export New Words**: Export new words and contribute to the wordlist to improve the script.
+- **Real-time Feedback**: Adjusts suggestions based on chat messages and hints (more advanced than wordsleuth).
 - **Multi-language Support**: Available in Chinese, Hindi, Spanish, and more.
 
 ## Installation
@@ -39,9 +39,9 @@
 
 ## Planned Features
 
-- **Lobby Management**: Auto-leave or switch lobbies before being kicked.
-- **Neural Network Sorting**: Integrate neural network models for advanced word sorting.
-- **Humanized Drawing**: Add features for community-supported auto-drawing and saving others' drawings.
+- **Anti-Kick**: Auto-leave or switch lobbies before being kicked.
+- **Auto Draw (Legit)**: Humanized Auto-Drawing + community to share drawings (as files).
+- **AI Sorting**: Integrate neural network for advanced word sorting.
 
 ## Contributing
 
