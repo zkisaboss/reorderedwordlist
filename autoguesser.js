@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         WordSleuth Improved (Beta v2)
-// @name:zh-CN   词语侦探改进版（测试版）
-// @name:zh-TW   詞語偵探改進版（測試版）
-// @name:hi      शब्दसंधान उन्नत (बीटा)
-// @name:es      WordSleuth Mejorado (Beta)
+// @name         Skribbl Autoguesser
+// @name:zh-CN   Skribbl 自动猜词器
+// @name:zh-TW   Skribbl 自動猜詞器
+// @name:hi      स्क्रिब्ल ऑटोगेसर
+// @name:es      Skribbl Adivinador Automático
 // @namespace    http://tampermonkey.net/
 // @supportURL   https://github.com/zkisaboss/reorderedwordlist
 // @version      1.0
@@ -13,7 +13,6 @@
 // @description:hi एक स्क्रिप्ट जो आपको स्क्रिब्लियो में शब्दों का अनुमान लगाने में मदद करता है।
 // @description:es Un script que te ayuda a adivinar palabras en skribblio.
 // @author       Zach Kosove
-// @match        http*://www.skribbl.io/*
 // @match        http*://skribbl.io/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=skribbl.io
 // @grant        GM_setValue
@@ -30,51 +29,46 @@
 'use strict';
 /*
 ToDo:
-- Add export and autoGuess parent element + make parent stick to `guessElem` (UI)
-
-Planned:
 - Auto-leave / Auto-change lobbies before kick <— How does Typo switch lobbies?
 
+Planned:
+- Auto-sort possibleWords using a neural net (check if Google's model is open source)
+
 Bugs:
-- Clicking the last answer duplicates submission
 - Filter breaks when another user shares your name
-- Empty line appends to `newWords` list when exporting
-- Enter can accidentally toggle `autoGuessButton`
+- Enter can toggle `autoGuessButton`
 
 Ideas:
 - Humanized auto-draw (inspired by Typo) with community support on GitHub. AutoSave other peoples drawings.
-- Auto-sort possibleWords (neural net) (is googles model open source?)
 - Randomize auto-guess time
-- Add `autoGuessLastAnswer` toggle
 */
 
 // Variables
-// const autoGuessLastAnswer = true;
 let autoGuessing = false;
 
 
 // UI Elements
 const parentElement = document.createElement('div');
-Object.assign(parentElement.style, { position: 'fixed', bottom: 0, right: 0, width: '100%', height: 'auto' });
+Object.assign(parentElement.style, { position: 'fixed', bottom: '0', right: '0', width: '100%', height: 'auto' });
 document.body.appendChild(parentElement);
 
 const guessElem = document.createElement('div');
 Object.assign(guessElem.style, { padding: '10px', backgroundColor: 'white', maxHeight: '200px', overflowX: 'auto', whiteSpace: 'nowrap', width: '100%' });
 parentElement.appendChild(guessElem);
 
-// settingsElem = document.createElement('div');
-// Object.assign(settingsElem.style, { });
-// parentElement.appendChild(settingsElem);
+const settingsElem = document.createElement('div');
+Object.assign(settingsElem.style, { position: 'absolute', bottom: 'calc(100%)', right: '0', padding: '10px 5px', display: 'flex', alignItems: 'center', gap: '10px' });
+parentElement.appendChild(settingsElem);
 
 const autoGuessButton = document.createElement('button');
 autoGuessButton.innerHTML = `Auto Guess: ${autoGuessing ? 'ON' : 'OFF'}`;
-Object.assign(autoGuessButton.style, { position: 'absolute', bottom: 'calc(100% + 10px)', right: '115px', padding: '5px 10px', fontSize: '12px', backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '5px' });
-parentElement.appendChild(autoGuessButton);
+Object.assign(autoGuessButton.style, { padding: '5px 10px', fontSize: '12px', backgroundColor: '#333', color: '#fff' });
+settingsElem.appendChild(autoGuessButton);
 
 const exportButton = document.createElement('button');
 exportButton.innerHTML = 'Export Answers';
-Object.assign(exportButton.style, { position: 'absolute', bottom: 'calc(100% + 10px)', right: 0, padding: '5px 10px', fontSize: '12px', backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '5px' });
-parentElement.appendChild(exportButton);
+Object.assign(exportButton.style, { padding: '5px 10px', fontSize: '12px', backgroundColor: '#333', color: '#fff' });
+settingsElem.appendChild(exportButton);
 
 
 // Functions
@@ -155,18 +149,6 @@ observeDrawingTurn();
 
 
 // Core functionality
-/* 1) When a new round starts generate `possibleWords` using `correctAnswers`.
- *
- * 2) Filter `possibleWords` (hint observer)
- *        a. When a new hint appears
- *
- * 2) Filter `possibleWords` (chat observer)
- *        a. When the word is guessed in chat
- *        b. When closeWord message appears
- *        c. When user guesses word and it is not close
- *
- * 3) When the round is over push `correctAnswer` to `correctAnswers` + increase priority (comming soon)
- */
 let possibleWords = [];
 
 function renderGuesses(possibleWords) {
@@ -272,7 +254,8 @@ function observeHints() {
 
 observeHints();
 
-// add source explaining levenstein distance
+
+//  https://youtu.be/Dd_NgYVOdLk
 function levenshteinDistance(a, b) {
     const matrix = [];
     for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -324,7 +307,6 @@ function handleChatMessage(messageNode) {
     }
 }
 
-
 function observeChat() {
     const chatContainer = document.querySelector('.chat-content');
     if (chatContainer) {
@@ -347,9 +329,7 @@ function observeInput() {
 
     inputElem.addEventListener('keydown', ({ key }) => {
         if (key === 'Enter') {
-            const selectedWord = guessElem.querySelector('div').innerText;
-            possibleWords = possibleWords.filter(word => word !== selectedWord);
-            inputElem.value = selectedWord;
+            inputElem.value = guessElem.querySelector('div').innerText;
             inputElem.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
         }
     });
