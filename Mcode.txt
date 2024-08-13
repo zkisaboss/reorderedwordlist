@@ -1,14 +1,42 @@
+// ==UserScript==
+// @name         WordSleuth Improved (Beta v2)
+// @name:zh-CN   词语侦探改进版（测试版）
+// @name:zh-TW   詞語偵探改進版（測試版）
+// @name:hi      शब्दसंधान उन्नत (बीटा)
+// @name:es      WordSleuth Mejorado (Beta)
+// @namespace    http://tampermonkey.net/
+// @supportURL   https://github.com/zkisaboss/reorderedwordlist
+// @version      1.0
+// @description  A script that helps you guess words in skribblio.
+// @description:zh-CN 一个帮助你在skribblio中猜词的脚本。
+// @description:zh-TW 一個幫助你在skribblio中猜詞的腳本。
+// @description:hi एक स्क्रिप्ट जो आपको स्क्रिब्लियो में शब्दों का अनुमान लगाने में मदद करता है।
+// @description:es Un script que te ayuda a adivinar palabras en skribblio.
+// @author       Zach Kosove
+// @match        http*://www.skribbl.io/*
+// @match        http*://skribbl.io/*
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=skribbl.io
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @license      MIT
+// @compatible   chrome
+// @compatible   firefox
+// @compatible   opera
+// @compatible   safari
+// @compatible   edge
+// ==/UserScript==
+
 (function() {
 'use strict';
 /*
 ToDo:
-- Fix input observer
 - Add export and autoGuess parent element + make parent stick to `guessElem` (UI)
 
 Planned:
 - Auto-leave / Auto-change lobbies before kick <— How does Typo switch lobbies?
 
 Bugs:
+- Clicking the last answer duplicates submission
 - Filter breaks when another user shares your name
 - Empty line appends to `newWords` list when exporting
 - Enter can accidentally toggle `autoGuessButton`
@@ -20,7 +48,7 @@ Ideas:
 - Add `autoGuessLastAnswer` toggle
 */
 
-// Variables (Default Values)
+// Variables
 // const autoGuessLastAnswer = true;
 let autoGuessing = false;
 
@@ -52,37 +80,31 @@ parentElement.appendChild(exportButton);
 // Functions
 const correctAnswers = GM_getValue('correctAnswers', []);
 
-function fetchWords(url) {
-    return fetch(url)
-        .then(response => response.ok ? response.text() : Promise.reject(`HTTP error! status: ${response.status}`))
-        .then(data => data.split('\n').map(word => word.trim())) // is trim necessary
-        .catch(error => {
-            console.error(`Fetch error: ${error.message}`);
-            return [];
-        }); // is error catch necessary
+async function fetchWords(url) {
+    const response = await fetch(url);
+    if (!response.ok) return [];
+    const data = await response.text();
+    return data.split('\n');
 }
 
-function fetchAndStoreLatestWordlist() {
-    fetchWords('https://raw.githubusercontent.com/zkisaboss/reorderedwordlist/main/wordlist.txt')
-        .then(words => words.forEach(word => {
-            if (!correctAnswers.includes(word)) correctAnswers.push(word);
-        })); // can you make this more readable
+async function fetchAndStoreLatestWordlist() {
+    const words = await fetchWords('https://raw.githubusercontent.com/zkisaboss/reorderedwordlist/main/wordlist.txt');
+
+    words.forEach(word => {
+        if (!correctAnswers.includes(word)) correctAnswers.push(word);
+    });
 }
 
 fetchAndStoreLatestWordlist();
 
-// re-impliment
+
 let myUsername = '';
 
 function setUsername() {
-    const playerElems = document.querySelectorAll(".player");
-    playerElems.forEach(playerElem => {
-        const playerNameElem = playerElem.querySelector(".player-name");
-        if (playerNameElem) {
-		        let playerName = playerNameElem.textContent.trim(); // is trim necessary
-		        if (playerName.endsWith(" (You)")) {
-		            myUsername = playerName.replace(" (You)", "");
-		        }
+    document.querySelectorAll(".player .player-name").forEach(playerNameElem => {
+        const playerName = playerNameElem.textContent;
+        if (playerName.endsWith(" (You)")) {
+            myUsername = playerName.replace(" (You)", "");
         }
     });
 }
@@ -160,7 +182,7 @@ function renderGuesses(possibleWords) {
             marginRight: '2px',
             color: 'white',
             textShadow: '2px 2px 2px black',
-            backgroundColor: 'hsl(21%, 100%, 50%)'
+            backgroundColor: 'hsl(205, 100%, 50%)'
         });
 
         wordElem.addEventListener('mouseenter', () => {
@@ -169,7 +191,7 @@ function renderGuesses(possibleWords) {
         });
 
         wordElem.addEventListener('mouseleave', () => {
-            if (!wordElem.classList.contains('pressed')) wordElem.style.backgroundColor = `hsl(${hueValue}, 100%, 50%)`;
+            if (!wordElem.classList.contains('pressed')) wordElem.style.backgroundColor = 'hsl(205, 100%, 50%)';
             wordElem.classList.remove('hovered');
         });
 
@@ -180,7 +202,7 @@ function renderGuesses(possibleWords) {
 
         wordElem.addEventListener('mouseup', () => {
             wordElem.classList.remove('pressed');
-            wordElem.style.backgroundColor = wordElem.classList.contains('hovered') ? 'lightgray' : `hsl(${hueValue}, 100%, 50%)`;
+            wordElem.style.backgroundColor = wordElem.classList.contains('hovered') ? 'lightgray' : 'hsl(205, 100%, 50%)';
         });
 
         wordElem.addEventListener('click', () => {
@@ -194,37 +216,58 @@ function renderGuesses(possibleWords) {
 
 function generateGuesses() {
     const inputElem = document.querySelector('#game-chat input[data-translate="placeholder"]');
-    const inputRegex = new RegExp(`^${inputElem.value.trim()}`, 'i'); // is trim necessary
-    let filteredWords = possibleWords.filter(word => inputRegex.test(word));
-    // add delay or another implimentation to avoid spam-detection
+    const pattern = inputElem.value.toLowerCase().trim();
+    const filteredWords = possibleWords.filter(word => word.startsWith(pattern));
+
     if (possibleWords.length === 1) {
         inputElem.value = possibleWords.shift();
-        document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        inputElem.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     }
 
     renderGuesses(filteredWords);
 }
 
 function filterHints(inputWords) {
-    const hintElems = Array.from(document.querySelectorAll('.hints .hint'));
-    const hintPattern = hintElems.map(elem => elem.textContent === '_' ? '[a-z]' : elem.textContent).join('');
+    const hintPattern = Array.from(document.querySelectorAll('.hints .hint'))
+        .map(elem => elem.textContent === '_' ? '[a-z]' : elem.textContent)
+        .join('');
     const hintRegex = new RegExp(`^${hintPattern}$`, 'i');
     return inputWords.filter(word => hintRegex.test(word));
 }
 
-// When the all hints are uncovored push `correctAnswer` to `correctAnswers` + increase priority (comming soon)
 function observeHints() {
     const hintTargets = [
         document.querySelector('.hints .container'),
         document.querySelector('.words'),
         document.querySelector('#game-word')
-    ].filter(Boolean); // why three hint targets?
+    ].filter(Boolean);
 
     const observer = new MutationObserver(() => {
-        possibleWords = filterHints(possibleWords);
+        const hintElems = Array.from(document.querySelectorAll('.hints .hint'));
+        const allUncovered = hintElems.every(elem => elem.classList.contains('uncover'));
+
+        if (allUncovered) {
+            const correctAnswer = hintElems.map(elem => elem.textContent).join('').trim().toLowerCase();
+
+            const x = 1;
+            if (correctAnswers.includes(correctAnswer)) {
+                const currentIndex = correctAnswers.indexOf(correctAnswer);
+                const newIndex = Math.max(0, currentIndex - x);
+                correctAnswers.splice(currentIndex, 1);
+                correctAnswers.splice(newIndex, 0, correctAnswer);
+            } else {
+                correctAnswers.push(correctAnswer);
+            }
+
+            GM_setValue('correctAnswers', correctAnswers);
+            possibleWords = [];
+        } else {
+            possibleWords = filterHints(possibleWords);
+        }
+
         generateGuesses();
     });
-    hintTargets.forEach(target => observer.observe(target, { childList: true, subtree: true })); // do these observers ever disconnect?
+    hintTargets.forEach(target => observer.observe(target, { childList: true, subtree: true }));
 }
 
 observeHints();
@@ -251,50 +294,47 @@ function levenshteinDistance(a, b) {
     return matrix[b.length][a.length];
 }
 
-let previous = [];
+let previousWords = [];
 
 function handleChatMessage(messageNode) {
     const messageColor = window.getComputedStyle(messageNode).color;
+    const message = messageNode.textContent;
+
     if (messageColor === 'rgb(57, 117, 206)') {
         possibleWords = filterHints(correctAnswers);
+
         generateGuesses();
-    }
 
-    const message = messageNode.textContent;
-    if (message.includes(': ')) {
+    } else if (message.includes(': ')) {
         const [username, guess] = message.split(': ');
-        possibleWords = possibleWords.filter(word => word !== guess); // best solution
+        possibleWords = possibleWords.filter(word => word !== guess);
+        previousWords = possibleWords;
 
-        previous = possibleWords
         if (username === myUsername) {
             possibleWords = possibleWords.filter(word => levenshteinDistance(word, guess) > 1);
         }
 
         generateGuesses();
-    }
-    // if message (ends with) is close
-    if (message.endsWith('is close!')) console.log('.endsWith() works');
 
-    if (messageColor === 'rgb(226, 203, 0)' && message.includes('is close!')) {
-        console.log(message);
-   
-        let closeWord = message.split(' ')[0]; // works for multi-word guesses?
-        possibleWords = previous.filter(word => levenshteinDistance(word, closeWord) === 1);
+    } else if (messageColor === 'rgb(226, 203, 0)' && message.endsWith('is close!')) {
+        const closeWord = message.replace(' is close!', ''); // works for multi-word guesses?
+        possibleWords = previousWords.filter(word => levenshteinDistance(word, closeWord) === 1);
 
         generateGuesses();
     }
 }
 
+
 function observeChat() {
     const chatContainer = document.querySelector('.chat-content');
-    const observer = new MutationObserver(mutationsList => {
-        mutationsList.forEach(mutation => {
-            if (mutation.addedNodes.length > 0) {
-                handleChatMessage(mutation.addedNodes[0]);
-            }
+    if (chatContainer) {
+        const observer = new MutationObserver(mutationsList => {
+            mutationsList.forEach(mutation => {
+                if (mutation.addedNodes.length > 0) handleChatMessage(mutation.addedNodes[0]);
+            });
         });
-    });
-    observer.observe(chatContainer, { childList: true });
+        observer.observe(chatContainer, { childList: true });
+    }
 }
 
 observeChat();
@@ -302,22 +342,15 @@ observeChat();
 
 function observeInput() {
     const inputElem = document.querySelector('#game-chat input[data-translate="placeholder"]');
+
     inputElem.addEventListener('input', generateGuesses);
 
-    inputElem.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-            // fix regex so that if the input is "" it matches to anything (so possibleWords wont be filtered (remove carrot?))
-            const filteredWords = possibleWords.filter(word => new RegExp(`^${inputElem.value.trim()}`, 'i').test(word)); // .test()?
-            /*
-            if (inputElem.value.trim() === "") {
-                inputElem.value = possibleWords[0];
-                document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-            } 
-            */
-            if (filteredWords.length > 0) {
-                inputElem.value = filteredWords[0];
-                document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-            }
+    inputElem.addEventListener('keydown', ({ key }) => {
+        if (key === 'Enter') {
+            const selectedWord = guessElem.querySelector('div').innerText;
+            possibleWords = possibleWords.filter(word => word !== selectedWord);
+            inputElem.value = selectedWord;
+            inputElem.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
         }
     });
 }
@@ -356,24 +389,23 @@ function toggleAutoGuessing() {
 autoGuessButton.addEventListener('click', toggleAutoGuessing);
 
 
-function exportNewWords() {
-    fetchWords('https://raw.githubusercontent.com/zkisaboss/reorderedwordlist/main/wordlist.txt')
-        .then(latestWords => {
-            const newWords = correctAnswers.filter(word => !latestWords.includes(word)); // rename for readability
-            
-            const blob = new Blob([newWords.join('\n')], { type: 'text/plain;charset=utf-8' }); // possible empty line bug
+async function exportNewWords() {
+    const old = await fetchWords('https://raw.githubusercontent.com/zkisaboss/reorderedwordlist/main/wordlist.txt');
+    const newWords = correctAnswers.filter(word => !old.includes(word));
 
-            const anchor = document.createElement('a');
-            anchor.href = URL.createObjectURL(blob); // what does this do
-            anchor.download = 'newWords.txt';
-            anchor.style.display = 'none'; // is this necessary
+    const blob = new Blob([newWords.join('\n')], { type: 'text/plain;charset=utf-8' });
 
-            document.body.appendChild(anchor);
-            anchor.click();
+    const anchor = document.createElement('a');
+    anchor.href = URL.createObjectURL(blob);
+    anchor.download = 'newWords.txt';
+    // anchor.style.display = 'none'; // Optional but keeps things tidy
 
-            document.body.removeChild(anchor);
-        });
+    document.body.appendChild(anchor);
+    anchor.click();
+
+    document.body.removeChild(anchor);
 }
+
 
 exportButton.addEventListener('click', exportNewWords);
 })();
