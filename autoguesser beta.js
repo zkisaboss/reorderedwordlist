@@ -44,7 +44,7 @@ Ideas:
 */
 
 // Variables
-let autoGuessing = false;
+let autoGuessing = true;
 
 
 // UI Elements
@@ -77,8 +77,9 @@ const correctAnswers = GM_getValue('correctAnswers', []);
 async function fetchWords(url) {
     const response = await fetch(url);
     if (!response.ok) return [];
+
     const data = await response.text();
-    return data.split('\n');
+    return data.split('\n').filter(elem => elem !== '');
 }
 
 async function fetchAndStoreLatestWordlist() {
@@ -94,55 +95,38 @@ fetchAndStoreLatestWordlist();
 
 let myUsername = '';
 
-function setUsername() {
-    document.querySelectorAll(".player .player-name").forEach(playerNameElem => {
-        const playerName = playerNameElem.textContent;
-        if (playerName.endsWith(" (You)")) {
-            myUsername = playerName.replace(" (You)", "");
-        }
+function findUsername() {
+    const target = document.querySelector(".players-list");
+    if (!target) return;
+
+    const observer = new MutationObserver(() => {
+        myUsername = document.querySelector(".me").textContent.replace(" (You)", "")
+        observer.disconnect();
     });
+
+    observer.observe(target, { childList: true});
 }
 
-function observePlayers() {
-    const playersContainer = document.querySelector(".players-list");
-    if (playersContainer) {
-        const observer = new MutationObserver(() => {
-            if (myUsername === '') {
-                setUsername();
-            } else {
-                observer.disconnect();
-            }
-        });
-        observer.observe(playersContainer, { childList: true, subtree: true });
-    }
-}
-
-observePlayers();
+findUsername();
 
 
 function observeDrawingTurn() {
-    const wordsElement = document.querySelector('.words');
+    const target = document.querySelector('.words');
+    if (!target) return;
 
-    const processNewChildNodes = (childNodes) => {
-        childNodes.forEach(childNode => {
-            const textContent = childNode.textContent.toLowerCase().trim();
-            if (textContent && !correctAnswers.includes(textContent)) {
-                correctAnswers.push(textContent);
+    const observer = new MutationObserver(() => {
+        target.childNodes.forEach(word => {
+            const text = word.textContent.toLowerCase();
+
+            if (!correctAnswers.includes(text)) {
+                correctAnswers.push(text);
                 GM_setValue('correctAnswers', correctAnswers);
+                console.log(`New Word: ${text}`)
             }
         });
-    };
+    });
 
-    const mutationCallback = (mutationsList) => {
-        const mutation = mutationsList.find(mutation => mutation.type === 'childList');
-        if (mutation) {
-            processNewChildNodes(mutation.target.childNodes);
-        }
-    };
-
-    const observer = new MutationObserver(mutationCallback);
-
-    observer.observe(wordsElement, { subtree: true, childList: true });
+    observer.observe(target, { childList: true });
 }
 
 observeDrawingTurn();
@@ -154,9 +138,9 @@ let possibleWords = [];
 function renderGuesses(possibleWords) {
     guessElem.innerHTML = '';
 
-    possibleWords.forEach((word, index) => {
+    possibleWords.forEach(word => {
         const wordElem = document.createElement('div');
-        wordElem.innerHTML = word;
+        wordElem.textContent = word;
         Object.assign(wordElem.style, {
             fontWeight: 'bold',
             display: 'inline-block',
@@ -210,46 +194,41 @@ function generateGuesses() {
 }
 
 function filterHints(inputWords) {
-    const hintPattern = Array.from(document.querySelectorAll('.hints .hint'))
-        .map(elem => elem.textContent === '_' ? '[a-z]' : elem.textContent)
-        .join('');
+    const hints = Array.from(document.querySelectorAll('.hints .hint'));
+
+    // turn into helper function or use a cleaner method to find allUncovered
+    const allUncovered = hints.every(elem => elem.classList.contains('uncover'));
+    if (allUncovered) {
+        const correctAnswer = hints.map(elem => elem.textContent).join('').toLowerCase();
+
+        if (correctAnswers.includes(correctAnswer)) {
+            const currentIndex = correctAnswers.indexOf(correctAnswer);
+            const newIndex = Math.max(0, currentIndex - 1);
+            correctAnswers.splice(currentIndex, 1);
+            correctAnswers.splice(newIndex, 0, correctAnswer);
+        } else {
+            correctAnswers.push(correctAnswer);
+        }
+
+        GM_setValue('correctAnswers', correctAnswers);
+        return [];
+    }
+
+    const hintPattern = hints.map(hint => hint.textContent === '_' ? '[a-z]' : hint.textContent).join('');
     const hintRegex = new RegExp(`^${hintPattern}$`, 'i');
     return inputWords.filter(word => hintRegex.test(word));
 }
 
 function observeHints() {
-    const hintTargets = [
-        document.querySelector('.hints .container'),
-        document.querySelector('.words'),
-        document.querySelector('#game-word')
-    ].filter(Boolean);
+    const target = document.querySelector('.hints .container');
+    if (!target) return;
 
     const observer = new MutationObserver(() => {
-        const hintElems = Array.from(document.querySelectorAll('.hints .hint'));
-        const allUncovered = hintElems.every(elem => elem.classList.contains('uncover'));
-
-        if (allUncovered) {
-            const correctAnswer = hintElems.map(elem => elem.textContent).join('').trim().toLowerCase();
-
-            const x = 1;
-            if (correctAnswers.includes(correctAnswer)) {
-                const currentIndex = correctAnswers.indexOf(correctAnswer);
-                const newIndex = Math.max(0, currentIndex - x);
-                correctAnswers.splice(currentIndex, 1);
-                correctAnswers.splice(newIndex, 0, correctAnswer);
-            } else {
-                correctAnswers.push(correctAnswer);
-            }
-
-            GM_setValue('correctAnswers', correctAnswers);
-            possibleWords = [];
-        } else {
-            possibleWords = filterHints(possibleWords);
-        }
-
+        possibleWords = filterHints(possibleWords);
         generateGuesses();
     });
-    hintTargets.forEach(target => observer.observe(target, { childList: true, subtree: true }));
+
+    observer.observe(target, { childList: true, subtree: true });
 }
 
 observeHints();
@@ -283,12 +262,13 @@ function handleChatMessage(messageNode) {
     const messageColor = window.getComputedStyle(messageNode).color;
     const message = messageNode.textContent;
 
-    if (messageColor === 'rgb(57, 117, 206)') {
+    if (messageColor === 'rgb(57, 117, 206)' && message.endsWith('is drawing now!')) {
         possibleWords = filterHints(correctAnswers);
 
         generateGuesses();
+    }
 
-    } else if (message.includes(': ')) {
+    if (message.includes(': ')) {
         const [username, guess] = message.split(': ');
         possibleWords = possibleWords.filter(word => word !== guess);
         previousWords = possibleWords;
@@ -298,9 +278,10 @@ function handleChatMessage(messageNode) {
         }
 
         generateGuesses();
+    }
 
-    } else if (messageColor === 'rgb(226, 203, 0)' && message.endsWith('is close!')) {
-        const closeWord = message.replace(' is close!', ''); // works for multi-word guesses?
+    if (messageColor === 'rgb(226, 203, 0)' && message.endsWith('is close!')) {
+        const closeWord = message.replace(' is close!', '');
         possibleWords = previousWords.filter(word => levenshteinDistance(word, closeWord) === 1);
 
         generateGuesses();
@@ -308,15 +289,15 @@ function handleChatMessage(messageNode) {
 }
 
 function observeChat() {
-    const chatContainer = document.querySelector('.chat-content');
-    if (chatContainer) {
-        const observer = new MutationObserver(mutationsList => {
-            mutationsList.forEach(mutation => {
-                if (mutation.addedNodes.length > 0) handleChatMessage(mutation.addedNodes[0]);
-            });
-        });
-        observer.observe(chatContainer, { childList: true });
-    }
+    const target = document.querySelector('.chat-content');
+    if (!target) return;
+
+    const observer = new MutationObserver(() => {
+        const lastMessage = target.lastElementChild;
+        if (lastMessage) handleChatMessage(lastMessage);
+    });
+
+    observer.observe(target, { childList: true });
 }
 
 observeChat();
@@ -347,7 +328,7 @@ function startAutoGuessing() {
                 document.querySelector('#game-chat input[data-translate="placeholder"]').value = possibleWords.shift();
                 document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
             }
-        }, 10000);
+        }, 8000);
     }
 }
 
@@ -378,14 +359,12 @@ async function exportNewWords() {
     const anchor = document.createElement('a');
     anchor.href = URL.createObjectURL(blob);
     anchor.download = 'newWords.txt';
-    // anchor.style.display = 'none'; // Optional but keeps things tidy
 
     document.body.appendChild(anchor);
     anchor.click();
 
     document.body.removeChild(anchor);
 }
-
 
 exportButton.addEventListener('click', exportNewWords);
 })();
