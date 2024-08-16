@@ -13,7 +13,7 @@
   <a href="https://github.com/zkisaboss/reorderedwordlist/blob/main/LICENSE" rel="nofollow"><img src="https://img.shields.io/github/license/zkisaboss/reorderedwordlist" alt="License"></a>
 </p>
 
-**Skribbl Autoguesser** is a userscript designed to enhance your experience on [Skribbl.io](https://www.skribbl.io/) by automatically suggesting words during gameplay. With better filtering alrogithms and more ways to store words.
+**Skribbl Autoguesser** is a userscript designed to enhance your experience on [Skribbl.io](https://www.skribbl.io/) with better filtering alrogithms and more ways to store words.
 
 ## Features
 
