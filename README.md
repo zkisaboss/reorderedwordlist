@@ -13,14 +13,13 @@
   <a href="https://github.com/zkisaboss/reorderedwordlist/blob/main/LICENSE" rel="nofollow"><img src="https://img.shields.io/github/license/zkisaboss/reorderedwordlist" alt="License"></a>
 </p>
 
-**Skribbl Autoguesser** is a userscript designed to enhance your experience on [Skribbl.io](https://www.skribbl.io/) by automatically suggesting words during gameplay. It builds on the original WordSleuth script, with advanced features to improve your guessing accuracy and gameplay experience.
+**Skribbl Autoguesser** is a userscript designed to enhance your experience on [Skribbl.io](https://www.skribbl.io/) by automatically suggesting words during gameplay. Based on the original WordSleuth script, with better filtering alrogithms and more ways to store words.
 
 ## Features
 
 - **Auto Guessing**: Automatically generate and submit guesses based on the context of the game.
-- **Dynamic Word List**: Continuously updated with new words.
-- **Export New Words**: Export new words and contribute to the wordlist to improve the script.
-- **Real-time Feedback**: Adjusts suggestions based on chat messages and hints (more advanced than wordsleuth).
+- **Word List**: Displays words based on hints, user input, and chat messages, continuously updated with new words.
+- **Export Words**: Export new words and contribute to the wordlist to improve the script.
 - **Multi-language Support**: Available in Chinese, Hindi, Spanish, and more.
 
 ## Installation
@@ -45,7 +44,7 @@
 
 ## Contributing
 
-We welcome contributions! Please create a pull request or open an issue on [GitHub](https://github.com/zkisaboss/reorderedwordlist) for any improvements or bug reports. Discuss new ideas or features in the [discussions](https://github.com/zkisaboss/reorderedwordlist/discussions) to ensure alignment before coding.
+We welcome contributions! Please create a pull request or open an issue on [GitHub](https://github.com/zkisaboss/reorderedwordlist) for improvements or bug reports. Discuss new ideas or features in the [discussions](https://github.com/zkisaboss/reorderedwordlist/discussions).
 
 ## License
 
