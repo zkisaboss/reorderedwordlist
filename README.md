@@ -17,7 +17,7 @@
 
 ## Features
 
-- **Auto Guessing**: Automatically generate and submit guesses based on the context of the game.
+- **Auto Guessing**: Generate and submit guesses based on the context of the game.
 - **Word List**: Displays words based on hints, user input, and chat messages, continuously updated with new words.
 - **Export Words**: Export new words and contribute to the wordlist to improve the script.
 - **Multi-language Support**: Available in Chinese, Hindi, Spanish, and more.
