@@ -1,20 +1,20 @@
 // ==UserScript==
-// @name         Skribbl Autoguesser Beta
+// @name         Skribbl AutoGuesser Beta
 // @name:zh-CN   Skribbl 自动猜词器
 // @name:zh-TW   Skribbl 自動猜詞器
-// @name:hi      स्क्रिब्ल ऑटोगेसर
+// @name:hi      Skribbl स्वतः अनुमान स्क्रिप्ट
 // @name:es      Skribbl Adivinador Automático
 // @namespace    http://tampermonkey.net/
-// @supportURL   https://github.com/zkisaboss/reorderedwordlist
-// @version      1.0
-// @description  A script that helps you guess words in skribblio.
-// @description:zh-CN 一个帮助你在skribblio中猜词的脚本。
-// @description:zh-TW 一個幫助你在skribblio中猜詞的腳本。
-// @description:hi एक स्क्रिप्ट जो आपको स्क्रिब्लियो में शब्दों का अनुमान लगाने में मदद करता है।
-// @description:es Un script que te ayuda a adivinar palabras en skribblio.
+// @version      1.02
+// @description  Automatically suggests guesses in Skribbl.io. Fast, easy, and effective.
+// @description:zh-CN 自动在 Skribbl.io 中猜词，快速、简单、有效。
+// @description:zh-TW 自動在 Skribbl.io 中猜詞，快速、簡單、有效。
+// @description:hi Skribbl.io में शब्दों का अनुमान लगाने वाली तेज़ और आसान स्क्रिप्ट।
+// @description:es Adivina palabras automáticamente en Skribbl.io de forma rápida y sencilla.
 // @author       Zach Kosove
-// @match        http*://skribbl.io/*
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=skribbl.io
+// @supportURL   https://github.com/zkisaboss/reorderedwordlist
+// @match        https://skribbl.io/*
+// @icon         https://skribbl.io/favicon.png
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @license      MIT
@@ -23,52 +23,141 @@
 // @compatible   opera
 // @compatible   safari
 // @compatible   edge
+// @downloadURL https://update.greasyfork.org/scripts/503563/Skribbl%20AutoGuesser.user.js
+// @updateURL https://update.greasyfork.org/scripts/503563/Skribbl%20AutoGuesser.meta.js
 // ==/UserScript==
 
 (function() {
 'use strict';
 /*
 ToDo:
-- Auto-leave / Auto-change lobbies before kick <— How does Typo switch lobbies?
+- Revamp UI 
 
 Planned:
-- Auto-sort possibleWords using a neural net (check if Google's model is open source)
+- Auto-change lobbies on drawing turn / before kick <— How does Typo switch lobbies?
 
 Bugs:
 - Filter breaks when another user shares your name
-- Enter can toggle `autoGuessButton`
 
 Ideas:
-- Humanized auto-draw (inspired by Typo) with community support on GitHub. AutoSave other peoples drawings.
-- Randomize auto-guess time
+- Humanized auto-draw (inspired by Typo) with community support on GitHub.
 */
 
+(function() {
+'use strict';
+
 // Variables
-let autoGuessing = true;
+let autoGuessing = false;
 
 
-// UI Elements
-const parentElement = document.createElement('div');
-Object.assign(parentElement.style, { position: 'fixed', bottom: '0', right: '0', width: '100%', height: 'auto' });
-document.body.appendChild(parentElement);
+// == UI Elements ==
+const UI_STYLE = {
+    fontFamily: "'Segoe UI', 'Helvetica Neue', sans-serif",
+    fontSize: '14px',
+    color: '#2d2f35',
+    background: '#f9f9fb',
+    shadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+    borderRadius: '9999px',
+    button: {
+        padding: '10px 20px',
+        fontSize: '14px',
+        fontWeight: '600',
+        border: 'none',
+        borderRadius: '9999px',
+        background: '#6366f1',
+        color: '#fff',
+        cursor: 'pointer',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+        transition: 'background 0.3s ease',
+        hover: '#4f46e5'
+    }
+};
 
-const guessElem = document.createElement('div');
-Object.assign(guessElem.style, { padding: '10px', backgroundColor: 'white', maxHeight: '200px', overflowX: 'auto', whiteSpace: 'nowrap', width: '100%' });
-parentElement.appendChild(guessElem);
+// == Helpers ==
+const apply = (el, styles) => {
+    const { hover, ...s } = styles;
+    Object.assign(el.style, s);
+    if (hover) {
+        const orig = s.background;
+        el.onmouseenter = () => el.style.background = hover;
+        el.onmouseleave = () => el.style.background = orig;
+    }
+    return el;
+};
 
-const settingsElem = document.createElement('div');
-Object.assign(settingsElem.style, { position: 'absolute', bottom: 'calc(100%)', right: '0', padding: '10px 5px', display: 'flex', alignItems: 'center', gap: '10px' });
-parentElement.appendChild(settingsElem);
+const el = (tag, style, text, click) => {
+    const e = apply(document.createElement(tag), style);
+    if (text) e.textContent = text;
+    if (click) e.onclick = click;
+    return e;
+};
 
-const autoGuessButton = document.createElement('button');
-autoGuessButton.innerHTML = `Auto Guess: ${autoGuessing ? 'ON' : 'OFF'}`;
-Object.assign(autoGuessButton.style, { padding: '5px 10px', fontSize: '12px', backgroundColor: '#333', color: '#fff' });
-settingsElem.appendChild(autoGuessButton);
+// == UI ==
+const container = el('div', {
+    position: 'fixed',
+    bottom: '0',
+    right: '0',
+    width: '100%',
+    zIndex: '10000',
+    fontFamily: UI_STYLE.fontFamily,
+    fontSize: UI_STYLE.fontSize,
+    color: UI_STYLE.color
+});
+document.body.appendChild(container);
 
-const exportButton = document.createElement('button');
-exportButton.innerHTML = 'Export Answers';
-Object.assign(exportButton.style, { padding: '5px 10px', fontSize: '12px', backgroundColor: '#333', color: '#fff' });
-settingsElem.appendChild(exportButton);
+const bar = el('div', {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: '10px',
+    padding: UI_STYLE.button.padding,
+    background: UI_STYLE.background,
+    boxShadow: UI_STYLE.shadow,
+    borderTopLeftRadius: UI_STYLE.borderRadius,
+    borderTopRightRadius: UI_STYLE.borderRadius
+});
+container.appendChild(bar);
+
+const guessDisplay = el('div', {
+    padding: UI_STYLE.button.padding,
+    background: UI_STYLE.background,
+    height: '60px',
+    overflowX: 'auto',
+    whiteSpace: 'nowrap',
+    width: '100%',
+    boxShadow: UI_STYLE.shadow
+});
+container.appendChild(guessDisplay);
+
+// == Buttons ==
+const btnStyle = UI_STYLE.button;
+const guessCounter = el('div', { ...btnStyle, userSelect: 'none' }, 'Remaining Guesses: 0');
+const autoBtn = el('button', btnStyle, `Auto Guess: ${autoGuessing ? 'ON' : 'OFF'}`);
+const exportBtn = el('button', btnStyle, 'Export Answers');
+
+[guessCounter, autoBtn, exportBtn].forEach(b => bar.appendChild(b));
+
+// == Render ==
+function renderGuesses(words) {
+    guessDisplay.innerHTML = '';
+    guessCounter.textContent = `Remaining Guesses: ${words.length}`;
+
+    words.forEach(word => {
+        const w = el('button', {
+            ...btnStyle,
+            display: 'inline-block',
+            margin: '3px',
+            textShadow: '1px 1px 2px rgba(0,0,0,0.2)',
+            hover: btnStyle.hover
+        }, word, () => {
+            const input = document.querySelector('#game-chat input[data-translate="placeholder"]');
+            const form = document.querySelector('#game-chat form');
+            input.value = word;
+            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        });
+        guessDisplay.appendChild(w);
+    });
+}
 
 
 // Functions
@@ -120,8 +209,8 @@ function observeDrawingTurn() {
 
             if (!correctAnswers.includes(text)) {
                 correctAnswers.push(text);
-                GM_setValue('correctAnswers', correctAnswers);
                 console.log(`New Word: ${text}`)
+                GM_setValue('correctAnswers', correctAnswers);
             }
         });
     });
@@ -134,52 +223,54 @@ observeDrawingTurn();
 
 // Core functionality
 let possibleWords = [];
-
+/*
 function renderGuesses(possibleWords) {
     guessElem.innerHTML = '';
 
+    remainingGuesses.innerHTML = `Remaining Guesses: ${possibleWords.length}`;
+
     possibleWords.forEach(word => {
-        const wordElem = document.createElement('div');
-        wordElem.textContent = word;
-        Object.assign(wordElem.style, {
-            fontWeight: 'bold',
-            display: 'inline-block',
-            padding: '5px',
-            marginRight: '2px',
-            color: 'white',
-            textShadow: '2px 2px 2px black',
-            backgroundColor: 'hsl(205, 100%, 50%)'
-        });
+          const wordElem = document.createElement('div');
+          wordElem.textContent = word;
+          Object.assign(wordElem.style, {
+              fontWeight: 'bold',
+              display: 'inline-block',
+              padding: '5px',
+              marginRight: '2px',
+              color: 'white',
+              textShadow: '2px 2px 2px black',
+              backgroundColor: 'hsl(205, 100%, 50%)'
+          });
 
-        wordElem.addEventListener('mouseenter', () => {
-            if (!wordElem.classList.contains('pressed')) wordElem.style.backgroundColor = 'lightgray';
-            wordElem.classList.add('hovered');
-        });
+          wordElem.addEventListener('mouseenter', () => {
+              if (!wordElem.classList.contains('pressed')) wordElem.style.backgroundColor = 'lightgray';
+              wordElem.classList.add('hovered');
+          });
 
-        wordElem.addEventListener('mouseleave', () => {
-            if (!wordElem.classList.contains('pressed')) wordElem.style.backgroundColor = 'hsl(205, 100%, 50%)';
-            wordElem.classList.remove('hovered');
-        });
+          wordElem.addEventListener('mouseleave', () => {
+              if (!wordElem.classList.contains('pressed')) wordElem.style.backgroundColor = 'hsl(205, 100%, 50%)';
+              wordElem.classList.remove('hovered');
+          });
 
-        wordElem.addEventListener('mousedown', () => {
-            wordElem.classList.add('pressed');
-            wordElem.style.backgroundColor = 'gray';
-        });
+          wordElem.addEventListener('mousedown', () => {
+              wordElem.classList.add('pressed');
+              wordElem.style.backgroundColor = 'gray';
+          });
 
-        wordElem.addEventListener('mouseup', () => {
-            wordElem.classList.remove('pressed');
-            wordElem.style.backgroundColor = wordElem.classList.contains('hovered') ? 'lightgray' : 'hsl(205, 100%, 50%)';
-        });
+          wordElem.addEventListener('mouseup', () => {
+              wordElem.classList.remove('pressed');
+              wordElem.style.backgroundColor = wordElem.classList.contains('hovered') ? 'lightgray' : 'hsl(205, 100%, 50%)';
+          });
 
-        wordElem.addEventListener('click', () => {
-            document.querySelector('#game-chat input[data-translate="placeholder"]').value = word;
-            document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-        });
+          wordElem.addEventListener('click', () => {
+              document.querySelector('#game-chat input[data-translate="placeholder"]').value = word;
+              document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+          });
 
-        guessElem.appendChild(wordElem);
+          guessElem.appendChild(wordElem);
     });
 }
-
+*/
 function generateGuesses() {
     const inputElem = document.querySelector('#game-chat input[data-translate="placeholder"]');
     const pattern = inputElem.value.toLowerCase().trim();
@@ -208,6 +299,7 @@ function filterHints(inputWords) {
             correctAnswers.splice(newIndex, 0, correctAnswer);
         } else {
             correctAnswers.push(correctAnswer);
+            console.log(`New Word: ${correctAnswer}`)
         }
 
         GM_setValue('correctAnswers', correctAnswers);
@@ -310,8 +402,11 @@ function observeInput() {
 
     inputElem.addEventListener('keydown', ({ key }) => {
         if (key === 'Enter') {
-            inputElem.value = guessElem.querySelector('div').innerText;
-            inputElem.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            const guessDiv = guessElem.querySelector('div');
+            if (guessDiv) {
+                inputElem.value = guessDiv.innerText;
+                inputElem.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            }
         }
     });
 }
