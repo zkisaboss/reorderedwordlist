@@ -1,20 +1,20 @@
 // ==UserScript==
-// @name         Skribbl Autoguesser
+// @name         Skribbl AutoGuesser
 // @name:zh-CN   Skribbl 自动猜词器
 // @name:zh-TW   Skribbl 自動猜詞器
-// @name:hi      स्क्रिब्ल ऑटोगेसर
+// @name:hi      Skribbl स्वतः अनुमान स्क्रिप्ट
 // @name:es      Skribbl Adivinador Automático
 // @namespace    http://tampermonkey.net/
-// @supportURL   https://github.com/zkisaboss/reorderedwordlist
-// @version      1.0
-// @description  A script that helps you guess words in skribblio.
-// @description:zh-CN 一个帮助你在skribblio中猜词的脚本。
-// @description:zh-TW 一個幫助你在skribblio中猜詞的腳本。
-// @description:hi एक स्क्रिप्ट जो आपको स्क्रिब्लियो में शब्दों का अनुमान लगाने में मदद करता है।
-// @description:es Un script que te ayuda a adivinar palabras en skribblio.
+// @version      1.07
+// @description  Automatically suggests guesses in Skribbl.io. Fast, easy, and effective.
+// @description:zh-CN 自动在 Skribbl.io 中猜词，快速、简单、有效。
+// @description:zh-TW 自動在 Skribbl.io 中猜詞，快速、簡單、有效。
+// @description:hi Skribbl.io में शब्दों का अनुमान लगाने वाली तेज़ और आसान स्क्रिप्ट।
+// @description:es Adivina palabras automáticamente en Skribbl.io de forma rápida y sencilla.
 // @author       Zach Kosove
-// @match        http*://skribbl.io/*
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=skribbl.io
+// @supportURL   https://github.com/zkisaboss/reorderedwordlist
+// @match        https://skribbl.io/*
+// @icon         https://skribbl.io/favicon.png
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @license      MIT
@@ -23,62 +23,147 @@
 // @compatible   opera
 // @compatible   safari
 // @compatible   edge
+// @downloadURL https://update.greasyfork.org/scripts/503563/Skribbl%20AutoGuesser.user.js
+// @updateURL https://update.greasyfork.org/scripts/503563/Skribbl%20AutoGuesser.meta.js
 // ==/UserScript==
+
 
 (function() {
 'use strict';
-/*
-ToDo:
-- Auto-leave / Auto-change lobbies before kick <— How does Typo switch lobbies?
 
-Planned:
-- Auto-sort possibleWords using a neural net (check if Google's model is open source)
+function createUI() {
+    const bottomUI = document.createElement('div');
+    bottomUI.id = 'bottom-ui';
+    bottomUI.innerHTML = `
+        <div id="settings-shelf" class="section">
+            <button class="ui-btn" id="remaining-guesses">Remaining Guesses: 0</button>
+            <button class="ui-btn" id="auto-guess">Auto Guess: OFF</button>
+            <button class="ui-btn" id="export-answers">Export Answers</button>
+            <button class="ui-btn ui-btn-secondary" id="get-special">Secret</button>
+        </div>
+        <div id="guess-shelf" class="section"></div>
+        <style>
+            #bottom-ui {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                width: 100%;
+                background:
+                  linear-gradient(135deg, rgba(255, 255, 255, 0.3), rgba(200, 200, 255, 0.15));
+                backdrop-filter: blur(30px) saturate(180%);
+                -webkit-backdrop-filter: blur(30px) saturate(180%);
+                border-top-left-radius: 24px;
+                border-top-right-radius: 24px;
+                border-top: 1px solid rgba(255, 255, 255, 0.25);
+                border-left: 1px solid rgba(255, 255, 255, 0.1);
+                border-right: 1px solid rgba(255, 255, 255, 0.1);
+                box-shadow:
+                  0 -12px 30px rgba(0, 0, 0, 0.15),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.5);
+                display: flex;
+                flex-direction: column;
+                z-index: 1000;
+                overflow: hidden;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                transition: transform 0.15s cubic-bezier(0.4, 0, 1, 1);
+            }
 
-Bugs:
-- Filter breaks when another user shares your name
-- Enter can toggle `autoGuessButton`
+            .hidden {
+                transform: translateY(100%);
+                transition: transform 0.15s cubic-bezier(0.4, 0, 1, 1);
+            }
 
-Ideas:
-- Humanized auto-draw (inspired by Typo) with community support on GitHub. AutoSave other peoples drawings.
-- Randomize auto-guess time
-*/
+            .section {
+                display: flex;
+                gap: 12px;
+                padding: 14px 24px;
+                overflow-x: auto;
+                white-space: nowrap;
+                -webkit-overflow-scrolling: touch;
+            }
 
-// Variables
-let autoGuessing = false;
+            .section::-webkit-scrollbar {
+                height: 6px;
+            }
+
+            .section::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 3px;
+            }
+
+            .ui-btn {
+                flex: 0 0 auto;
+                font-size: 15px;
+                font-weight: 500;
+                letter-spacing: 0.25px;
+                padding: 10px 18px;
+                border: 0.5px solid rgba(255, 255, 255, 0.25);
+                border-radius: 14px;
+                background: linear-gradient(135deg, rgba(120, 120, 255, 0.5), rgba(100, 100, 230, 0.35));
+                color: #ffffff;
+                cursor: pointer;
+                box-shadow:
+                  0 0 10px rgba(120, 120, 255, 0.5),
+                  inset 0 0 2px rgba(255, 255, 255, 0.2),
+                  0 1px 2px rgba(0, 0, 0, 0.15);
+                transition: background 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+            }
+
+            .ui-btn:hover {
+                background: linear-gradient(135deg, rgba(140, 140, 255, 0.7), rgba(120, 120, 255, 0.6));
+                box-shadow:
+                  0 0 18px rgba(140, 140, 255, 0.75),
+                  inset 0 0 3px rgba(255, 255, 255, 0.3);
+                transform: scale(1.04);
+            }
+
+            .ui-btn:active {
+                transform: scale(0.97);
+                box-shadow:
+                  0 0 8px rgba(100, 100, 200, 0.4),
+                  inset 0 0 6px rgba(255, 255, 255, 0.2);
+            }
+
+            .ui-btn-secondary {
+                display: inline-block;
+                background: linear-gradient(135deg, rgba(255, 120, 255, 0.5), rgba(200, 100, 230, 0.35));
+                color: #ffeaff;
+                border: 0.5px solid rgba(255, 180, 255, 0.3);
+            }
+
+            .ui-btn-secondary:hover {
+                background: linear-gradient(135deg, rgba(255, 140, 255, 0.7), rgba(220, 120, 240, 0.6));
+                box-shadow:
+                  0 0 18px rgba(255, 140, 255, 0.75),
+                  inset 0 0 3px rgba(255, 255, 255, 0.3);
+                transform: scale(1.04);
+            }
+        </style>
+        `;
+    document.body.appendChild(bottomUI);
+
+    const ui = document.getElementById('bottom-ui');
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') ui.classList.add('hidden');
+        if (e.key === 'ArrowUp') ui.classList.remove('hidden');
+    });
+
+}
+
+createUI();
 
 
-// UI Elements
-const parentElement = document.createElement('div');
-Object.assign(parentElement.style, { position: 'fixed', bottom: '0', right: '0', width: '100%', height: 'auto' });
-document.body.appendChild(parentElement);
-
-const guessElem = document.createElement('div');
-Object.assign(guessElem.style, { padding: '10px', backgroundColor: 'white', maxHeight: '200px', overflowX: 'auto', whiteSpace: 'nowrap', width: '100%' });
-parentElement.appendChild(guessElem);
-
-const settingsElem = document.createElement('div');
-Object.assign(settingsElem.style, { position: 'absolute', bottom: 'calc(100%)', right: '0', padding: '10px 5px', display: 'flex', alignItems: 'center', gap: '10px' });
-parentElement.appendChild(settingsElem);
-
-const autoGuessButton = document.createElement('button');
-autoGuessButton.innerHTML = `Auto Guess: ${autoGuessing ? 'ON' : 'OFF'}`;
-Object.assign(autoGuessButton.style, { padding: '5px 10px', fontSize: '12px', backgroundColor: '#333', color: '#fff' });
-settingsElem.appendChild(autoGuessButton);
-
-const exportButton = document.createElement('button');
-exportButton.innerHTML = 'Export Answers';
-Object.assign(exportButton.style, { padding: '5px 10px', fontSize: '12px', backgroundColor: '#333', color: '#fff' });
-settingsElem.appendChild(exportButton);
-
-
-// Functions
 const correctAnswers = GM_getValue('correctAnswers', []);
 
 async function fetchWords(url) {
     const response = await fetch(url);
     if (!response.ok) return [];
+
     const data = await response.text();
-    return data.split('\n');
+    return data.split('\n').filter(elem => elem !== '');
 }
 
 async function fetchAndStoreLatestWordlist() {
@@ -94,107 +179,65 @@ fetchAndStoreLatestWordlist();
 
 let myUsername = '';
 
-function setUsername() {
-    document.querySelectorAll(".player .player-name").forEach(playerNameElem => {
-        const playerName = playerNameElem.textContent;
-        if (playerName.endsWith(" (You)")) {
-            myUsername = playerName.replace(" (You)", "");
-        }
+function findUsername() {
+    const target = document.querySelector(".players-list");
+    if (!target) return;
+
+    const observer = new MutationObserver(() => {
+        myUsername = document.querySelector(".me").textContent.replace(" (You)", "")
+        observer.disconnect();
     });
+
+    observer.observe(target, { childList: true });
 }
 
-function observePlayers() {
-    const playersContainer = document.querySelector(".players-list");
-    if (playersContainer) {
-        const observer = new MutationObserver(() => {
-            if (myUsername === '') {
-                setUsername();
-            } else {
-                observer.disconnect();
-            }
-        });
-        observer.observe(playersContainer, { childList: true, subtree: true });
-    }
-}
-
-observePlayers();
+findUsername();
 
 
 function observeDrawingTurn() {
-    const wordsElement = document.querySelector('.words');
+    const target = document.querySelector('.words');
+    if (!target) return;
 
-    const processNewChildNodes = (childNodes) => {
-        childNodes.forEach(childNode => {
-            const textContent = childNode.textContent.toLowerCase().trim();
-            if (textContent && !correctAnswers.includes(textContent)) {
-                correctAnswers.push(textContent);
+    const observer = new MutationObserver(() => {
+        target.childNodes.forEach(word => {
+            const text = word.textContent.toLowerCase();
+
+            if (!correctAnswers.includes(text)) {
+                correctAnswers.push(text);
+                console.log(`New Word: ${text}`)
                 GM_setValue('correctAnswers', correctAnswers);
             }
         });
-    };
+    });
 
-    const mutationCallback = (mutationsList) => {
-        const mutation = mutationsList.find(mutation => mutation.type === 'childList');
-        if (mutation) {
-            processNewChildNodes(mutation.target.childNodes);
-        }
-    };
-
-    const observer = new MutationObserver(mutationCallback);
-
-    observer.observe(wordsElement, { subtree: true, childList: true });
+    observer.observe(target, { childList: true });
 }
 
 observeDrawingTurn();
 
 
 // Core functionality
+const remainingButton = document.getElementById('remaining-guesses');
+
+const guessShelf = document.getElementById('guess-shelf');
+
 let possibleWords = [];
 
 function renderGuesses(possibleWords) {
-    guessElem.innerHTML = '';
+    guessShelf.innerHTML = '';
+    remainingButton.textContent = `Remaining Guesses: ${possibleWords.length}`;
 
-    possibleWords.forEach((word, index) => {
-        const wordElem = document.createElement('div');
-        wordElem.innerHTML = word;
-        Object.assign(wordElem.style, {
-            fontWeight: 'bold',
-            display: 'inline-block',
-            padding: '5px',
-            marginRight: '2px',
-            color: 'white',
-            textShadow: '2px 2px 2px black',
-            backgroundColor: 'hsl(205, 100%, 50%)'
-        });
-
-        wordElem.addEventListener('mouseenter', () => {
-            if (!wordElem.classList.contains('pressed')) wordElem.style.backgroundColor = 'lightgray';
-            wordElem.classList.add('hovered');
-        });
-
-        wordElem.addEventListener('mouseleave', () => {
-            if (!wordElem.classList.contains('pressed')) wordElem.style.backgroundColor = 'hsl(205, 100%, 50%)';
-            wordElem.classList.remove('hovered');
-        });
-
-        wordElem.addEventListener('mousedown', () => {
-            wordElem.classList.add('pressed');
-            wordElem.style.backgroundColor = 'gray';
-        });
-
-        wordElem.addEventListener('mouseup', () => {
-            wordElem.classList.remove('pressed');
-            wordElem.style.backgroundColor = wordElem.classList.contains('hovered') ? 'lightgray' : 'hsl(205, 100%, 50%)';
-        });
-
-        wordElem.addEventListener('click', () => {
+    possibleWords.forEach(word => {
+        const btn = document.createElement('button');
+        btn.className = 'ui-btn';
+        btn.textContent = word;
+        btn.addEventListener('click', () => {
             document.querySelector('#game-chat input[data-translate="placeholder"]').value = word;
             document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
         });
-
-        guessElem.appendChild(wordElem);
+        guessShelf.appendChild(btn);
     });
-}
+};
 
 function generateGuesses() {
     const inputElem = document.querySelector('#game-chat input[data-translate="placeholder"]');
@@ -209,47 +252,44 @@ function generateGuesses() {
     renderGuesses(filteredWords);
 }
 
+function storeCorrectAnswer(word) {
+    if (correctAnswers.includes(word)) {
+        const index = correctAnswers.indexOf(word);
+        const newIndex = Math.max(0, index - 1);
+        correctAnswers.splice(index, 1);
+        correctAnswers.splice(newIndex, 0, word);
+    } else {
+        correctAnswers.push(word);
+        console.log(`New Word: ${word}`);
+    }
+
+    GM_setValue('correctAnswers', correctAnswers);
+}
+
 function filterHints(inputWords) {
-    const hintPattern = Array.from(document.querySelectorAll('.hints .hint'))
-        .map(elem => elem.textContent === '_' ? '[a-z]' : elem.textContent)
-        .join('');
-    const hintRegex = new RegExp(`^${hintPattern}$`, 'i');
-    return inputWords.filter(word => hintRegex.test(word));
+    const hints = Array.from(document.querySelectorAll('.hints .hint'));
+    const combined = hints.map(hint => hint.textContent === '_' ? '[a-z]' : hint.textContent).join('').toLowerCase();
+
+    const allUncovered = hints.every(hint => hint.classList.contains('uncover'));
+    if (allUncovered) {
+        storeCorrectAnswer(combined);
+        return [];
+    }
+
+    const regex = new RegExp(`^${combined}$`, 'i');
+    return inputWords.filter(word => regex.test(word));
 }
 
 function observeHints() {
-    const hintTargets = [
-        document.querySelector('.hints .container'),
-        document.querySelector('.words'),
-        document.querySelector('#game-word')
-    ].filter(Boolean);
+    const target = document.querySelector('.hints .container');
+    if (!target) return;
 
     const observer = new MutationObserver(() => {
-        const hintElems = Array.from(document.querySelectorAll('.hints .hint'));
-        const allUncovered = hintElems.every(elem => elem.classList.contains('uncover'));
-
-        if (allUncovered) {
-            const correctAnswer = hintElems.map(elem => elem.textContent).join('').trim().toLowerCase();
-
-            const x = 1;
-            if (correctAnswers.includes(correctAnswer)) {
-                const currentIndex = correctAnswers.indexOf(correctAnswer);
-                const newIndex = Math.max(0, currentIndex - x);
-                correctAnswers.splice(currentIndex, 1);
-                correctAnswers.splice(newIndex, 0, correctAnswer);
-            } else {
-                correctAnswers.push(correctAnswer);
-            }
-
-            GM_setValue('correctAnswers', correctAnswers);
-            possibleWords = [];
-        } else {
-            possibleWords = filterHints(possibleWords);
-        }
-
+        possibleWords = filterHints(possibleWords);
         generateGuesses();
     });
-    hintTargets.forEach(target => observer.observe(target, { childList: true, subtree: true }));
+
+    observer.observe(target, { childList: true, subtree: true });
 }
 
 observeHints();
@@ -283,12 +323,13 @@ function handleChatMessage(messageNode) {
     const messageColor = window.getComputedStyle(messageNode).color;
     const message = messageNode.textContent;
 
-    if (messageColor === 'rgb(57, 117, 206)') {
+    if (messageColor === 'rgb(57, 117, 206)' && message.endsWith('is drawing now!')) {
         possibleWords = filterHints(correctAnswers);
 
         generateGuesses();
+    }
 
-    } else if (message.includes(': ')) {
+    if (message.includes(': ')) {
         const [username, guess] = message.split(': ');
         possibleWords = possibleWords.filter(word => word !== guess);
         previousWords = possibleWords;
@@ -298,9 +339,10 @@ function handleChatMessage(messageNode) {
         }
 
         generateGuesses();
+    }
 
-    } else if (messageColor === 'rgb(226, 203, 0)' && message.endsWith('is close!')) {
-        const closeWord = message.replace(' is close!', ''); // works for multi-word guesses?
+    if (messageColor === 'rgb(226, 203, 0)' && message.endsWith('is close!')) {
+        const closeWord = message.replace(' is close!', '');
         possibleWords = previousWords.filter(word => levenshteinDistance(word, closeWord) === 1);
 
         generateGuesses();
@@ -308,15 +350,15 @@ function handleChatMessage(messageNode) {
 }
 
 function observeChat() {
-    const chatContainer = document.querySelector('.chat-content');
-    if (chatContainer) {
-        const observer = new MutationObserver(mutationsList => {
-            mutationsList.forEach(mutation => {
-                if (mutation.addedNodes.length > 0) handleChatMessage(mutation.addedNodes[0]);
-            });
-        });
-        observer.observe(chatContainer, { childList: true });
-    }
+    const target = document.querySelector('.chat-content');
+    if (!target) return;
+
+    const observer = new MutationObserver(() => {
+        const lastMessage = target.lastElementChild;
+        if (lastMessage) handleChatMessage(lastMessage);
+    });
+
+    observer.observe(target, { childList: true });
 }
 
 observeChat();
@@ -329,8 +371,11 @@ function observeInput() {
 
     inputElem.addEventListener('keydown', ({ key }) => {
         if (key === 'Enter') {
-            inputElem.value = guessElem.querySelector('div').innerText;
-            inputElem.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            const guessDiv = guessShelf.querySelector('button');
+            if (guessDiv) {
+                inputElem.value = guessDiv.innerText;
+                inputElem.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            }
         }
     });
 }
@@ -340,6 +385,8 @@ observeInput();
 
 let autoGuessInterval;
 
+let autoGuessing = false;
+
 function startAutoGuessing() {
     if (autoGuessing) {
         autoGuessInterval = setInterval(() => {
@@ -347,12 +394,14 @@ function startAutoGuessing() {
                 document.querySelector('#game-chat input[data-translate="placeholder"]').value = possibleWords.shift();
                 document.querySelector('#game-chat form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
             }
-        }, 10000);
+        }, 8000);
     }
 }
 
 startAutoGuessing();
 
+
+const autoGuessButton = document.getElementById('auto-guess');
 
 function toggleAutoGuessing() {
     autoGuessing = !autoGuessing;
@@ -378,7 +427,6 @@ async function exportNewWords() {
     const anchor = document.createElement('a');
     anchor.href = URL.createObjectURL(blob);
     anchor.download = 'newWords.txt';
-    // anchor.style.display = 'none'; // Optional but keeps things tidy
 
     document.body.appendChild(anchor);
     anchor.click();
@@ -386,6 +434,45 @@ async function exportNewWords() {
     document.body.removeChild(anchor);
 }
 
+const exportButton = document.getElementById('export-answers');
 
 exportButton.addEventListener('click', exportNewWords);
+
+
+const secretButton = document.getElementById('get-special');
+
+function runSecret() {
+    const avatars = document.querySelectorAll('.avatar-container .avatar');
+
+    const interval = setInterval(() => {
+        let allSecretsVisible = true;
+
+        avatars.forEach(avatar => {
+            const secret = avatar.querySelector('.special');
+
+            if (getComputedStyle(secret).display === 'none') {
+                avatar.click();
+                allSecretsVisible = false;
+            }
+        });
+
+        if (allSecretsVisible) clearInterval(interval);
+    }, 15);
+}
+
+secretButton.addEventListener('click', runSecret);
+
+
+function observeSecret() {
+    const target = document.getElementById('home');
+    if (!target) return;
+
+    const observer = new MutationObserver(() => {
+        secretButton.style.display = target.hasAttribute('style') ? 'none' : 'inline-block';
+    });
+
+    observer.observe(target, { attributes: true, attributeFilter: ['style'] });
+}
+
+observeSecret();
 })();
