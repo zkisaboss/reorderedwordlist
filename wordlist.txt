@@ -655,6 +655,10 @@ yolk
 smug
 tram
 olaf
+thor
+orca
+oboe
+yeti
 store
 stork
 stone
@@ -2240,6 +2244,8 @@ parasol
 pitcher
 hipster
 company
+suburbs
+mrbeast
 mountain
 fountain
 slippers
@@ -2629,6 +2635,7 @@ election
 elevator
 elephant
 aardvark
+wardrobe
 orangutan
 peninsula
 passenger
@@ -3205,6 +3212,7 @@ trick shot
 tumbleweed
 typewriter
 university
+fertilizer
 video game
 usain bolt
 vegetarian
@@ -3397,6 +3405,7 @@ easter bunny
 fast forward
 eiffel tower
 electric car
+bus terminal
 ferris wheel
 fire hydrant
 flamethrower
