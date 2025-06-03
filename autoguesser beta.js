@@ -31,7 +31,7 @@
 'use strict';
 /*
 ToDo:
-- Revamp UI 
+- Create Dummy Buttons For Changing Lobbies
 
 Planned:
 - Auto-change lobbies on drawing turn / before kick <— How does Typo switch lobbies?
